@@ -21,12 +21,14 @@ const credentials = Buffer.from(
 ).toString("base64");
 
 const app = express();
+app.use(express.json());
 
 app.set("view engine", "ejs");
 app.set("views", "src/views");
 
-app.get("/", (req, res) => {
-  axios({
+app.get("/", async (req, res) => {
+  //cria um token oAuth
+  const authResponse = await axios({
     method: "POST",
     url: `${process.env.GN_ENDPOINT}/oauth/token`,
     headers: {
@@ -37,35 +39,41 @@ app.get("/", (req, res) => {
     data: {
       grant_type: "client_credentials",
     },
-  }).then((response) => {
-    const accessToken = response.data?.access_token;
-
-    const reqGN = axios.create({
-      baseURL: process.env.GN_ENDPOINT,
-      httpsAgent: agent,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    const dataCob = {
-      calendario: {
-        expiracao: 3600,
-      },
-      devedor: {
-        cpf: "12345678909",
-        nome: "Francisco da Silva",
-      },
-      valor: {
-        original: "100.00",
-      },
-      chave: "chavesjoabe1@gmail.com",
-      solicitacaoPagador: "Informe o número ou identificador do pedido.",
-    };
-
-    reqGN.post("v2/cob", dataCob).then((cob) => res.send(cob.data));
   });
+
+  const accessToken = authResponse.data?.access_token;
+  //criando uma instancia do axios com os headers padroes
+  const reqGN = axios.create({
+    baseURL: process.env.GN_ENDPOINT,
+    httpsAgent: agent,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  const dataCob = {
+    calendario: {
+      expiracao: 3600,
+    },
+    devedor: {
+      cpf: "12345678909",
+      nome: "Francisco da Silva",
+    },
+    valor: {
+      original: "100.00",
+    },
+    chave: "chavesjoabe1@gmail.com",
+    solicitacaoPagador: "Informe o número ou identificador do pedido.",
+  };
+  //cria uma cobrança
+  const cobResponse = await reqGN.post("v2/cob", dataCob);
+  //cria um qrcode com os dados da cobrança
+  const qrCodeResponse = await reqGN.get(
+    `/v2/loc/${cobResponse.data.loc.id}/qrcode`
+  );
+  //renderiza o ejs com o qrcode gerado
+  res.render("qrcode", { qrcodeImage: qrCodeResponse.data.imagemQrcode });
 });
 
 app.listen(3333, () => {
